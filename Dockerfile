@@ -22,6 +22,6 @@ COPY --from=build /app/dist ./dist
 # No correr como root dentro del contenedor.
 USER node
 
-# Render inyecta PORT; 4000 es el valor por defecto en local.
-EXPOSE 4000
+# Render inyecta PORT; 3001 es el valor por defecto en local.
+EXPOSE 3001
 CMD ["node", "dist/server.js"]
