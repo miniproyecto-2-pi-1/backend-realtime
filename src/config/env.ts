@@ -23,7 +23,7 @@ function limpiarClavePrivada(clave: string): string {
 }
 
 export const env = {
-  puerto: Number(process.env.PORT ?? 4000),
+  puerto: Number(process.env.PORT ?? 3001),
   // Orígenes que pueden conectarse (por ejemplo, la dirección del frontend en Vercel).
   origenesPermitidos: (process.env.CORS_ORIGINS ?? "http://localhost:5173")
     .split(",")

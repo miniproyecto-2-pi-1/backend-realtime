@@ -8,6 +8,7 @@ export async function verificarToken(socket: Socket, siguiente: (error?: Error) 
   const token = socket.handshake.auth.token;
 
   if (typeof token !== "string" || token === "") {
+    console.warn("[realtime] Handshake rechazado: falta el ID token.");
     siguiente(new Error("Falta iniciar sesión."));
     return;
   }
@@ -17,6 +18,7 @@ export async function verificarToken(socket: Socket, siguiente: (error?: Error) 
     socket.data.uid = persona.uid; // se guarda en esta conexión para usarlo después
     siguiente(); // aceptada
   } catch {
+    console.warn("[realtime] Handshake rechazado: el ID token no es válido.");
     siguiente(new Error("La sesión no es válida. Vuelve a iniciar sesión."));
   }
 }

@@ -17,10 +17,19 @@ const ERROR_GENERAL = "No pudimos completar la acción. Intenta de nuevo.";
 // Quién está en cada sala ahora mismo. Se guarda en memoria (se pierde si el servidor se reinicia).
 // sala -> (conexión -> persona)
 const personasPorSala = new Map<string, Map<string, Persona>>();
+const dejarEscuchaPorSala = new Map<string, () => void>();
 
 // Responde al navegador. Si el navegador no pidió respuesta, no hace nada.
 function responder(respuesta: Respuesta | undefined, resultado: { ok: boolean; error?: string }) {
   if (typeof respuesta === "function") respuesta(resultado);
+}
+
+function codigoErrorSeguro(error: unknown): string {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const codigo = error.code;
+    if (typeof codigo === "string" || typeof codigo === "number") return String(codigo);
+  }
+  return error instanceof Error ? error.name : "UNKNOWN";
 }
 
 // Saca el ID de sala de los datos que mandó el navegador (o nada si vienen mal).
@@ -55,8 +64,59 @@ function sacarDeLaSala(io: Server, socket: Socket, sala: string) {
   const conexiones = personasPorSala.get(sala);
   if (!conexiones) return;
   conexiones.delete(socket.id);
-  if (conexiones.size === 0) personasPorSala.delete(sala);
+  if (conexiones.size === 0) {
+    personasPorSala.delete(sala);
+    dejarEscuchaPorSala.get(sala)?.();
+    dejarEscuchaPorSala.delete(sala);
+  }
   avisarPresencia(io, sala);
+}
+
+function notificarSalaEliminada(io: Server, sala: string) {
+  io.to(sala).emit("sala-eliminada", { roomId: sala });
+  io.in(sala).socketsLeave(sala);
+  personasPorSala.delete(sala);
+  dejarEscuchaPorSala.get(sala)?.();
+  dejarEscuchaPorSala.delete(sala);
+}
+
+function escucharCambiosDeSala(io: Server, sala: string) {
+  if (dejarEscuchaPorSala.has(sala)) return;
+
+  let primerSnapshot = true;
+  let nombreAnterior: unknown;
+  const dejarEscucha = db.collection("rooms").doc(sala).onSnapshot(
+    (documento) => {
+      if (primerSnapshot) {
+        primerSnapshot = false;
+        if (!documento.exists) {
+          notificarSalaEliminada(io, sala);
+          return;
+        }
+        nombreAnterior = documento.get("nombre");
+        return;
+      }
+
+      if (!documento.exists) {
+        notificarSalaEliminada(io, sala);
+        return;
+      }
+
+      const nombre = documento.get("nombre");
+      if (typeof nombre === "string" && nombre !== nombreAnterior) {
+        io.to(sala).emit("sala-actualizada", { roomId: sala, nombre });
+      }
+      nombreAnterior = nombre;
+    },
+    (error) => {
+      console.error(`[salas] No se pudo escuchar cambios en la sala ${sala}:`, error);
+      if (dejarEscuchaPorSala.get(sala) === dejarEscucha) {
+        dejarEscuchaPorSala.delete(sala);
+        dejarEscucha();
+      }
+    },
+  );
+  dejarEscuchaPorSala.set(sala, dejarEscucha);
 }
 
 export function registrarSalas(io: Server) {
@@ -65,10 +125,15 @@ export function registrarSalas(io: Server) {
     socket.on("unirse", async (datos: unknown, respuesta?: Respuesta) => {
       try {
         const sala = leerIdDeSala(datos);
-        if (!sala) return responder(respuesta, { ok: false, error: "Falta el ID de la sala." });
+        if (!sala) {
+          console.warn("[salas] unirse rechazado: falta roomId.");
+          return responder(respuesta, { ok: false, error: "Falta el ID de la sala." });
+        }
 
         const documento = await db.collection("rooms").doc(sala).get();
         if (!documento.exists) {
+          console.warn("[salas] unirse rechazado: sala inexistente.");
+          socket.emit("sala-eliminada", { roomId: sala });
           return responder(respuesta, { ok: false, error: "Sala no encontrada. Revisa el ID." });
         }
 
@@ -76,10 +141,12 @@ export function registrarSalas(io: Server) {
         socket.join(sala);
         if (!personasPorSala.has(sala)) personasPorSala.set(sala, new Map());
         personasPorSala.get(sala)!.set(socket.id, persona);
+        escucharCambiosDeSala(io, sala);
 
         avisarPresencia(io, sala);
         responder(respuesta, { ok: true });
-      } catch {
+      } catch (error) {
+        console.error("[salas] Falló el manejo de unirse.", { code: codigoErrorSeguro(error) });
         responder(respuesta, { ok: false, error: ERROR_GENERAL });
       }
     });
