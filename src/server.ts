@@ -22,6 +22,10 @@ const io = new Server(servidorHttp, {
   cors: { origin: env.origenesPermitidos }, // solo el frontend permitido puede conectarse
 });
 
+io.engine.on("connection_error", (error) => {
+  console.warn("[realtime] Error de transporte Socket.IO.", { code: error.code });
+});
+
 io.use(verificarToken); // 1. quién eres
 registrarSalas(io); // 2. qué puedes hacer en las salas
 

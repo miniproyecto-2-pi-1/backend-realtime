@@ -29,8 +29,12 @@ Del servidor al navegador:
 |---|---|---|
 | `mensaje` | `{ id, uid, username, texto, creadoEn }` | Alguien de la sala escribió |
 | `presencia` | `{ roomId, personas: [{ uid, username, avatar }] }` | Alguien entró o salió |
+| `sala-actualizada` | `{ roomId, nombre }` | El anfitrión cambió el nombre de la sala |
+| `sala-eliminada` | `{ roomId }` | La sala fue eliminada; se desconecta a sus participantes |
 
 Los mensajes se guardan en Firestore en `rooms/{roomId}/messages`.
+Mientras haya participantes conectados, el servidor escucha el documento de la sala en Firestore
+para notificar cambios de nombre o eliminación. El listener se cierra cuando sale la última persona.
 
 ## Probarlo en tu computador
 
@@ -40,7 +44,7 @@ cp .env.example .env     # llena los valores de Firebase
 npm run dev
 ```
 
-Comprobar que está vivo: abrir http://localhost:4000/health
+Comprobar que está vivo: abrir http://localhost:3001/health
 
 ## Variables de entorno
 
@@ -50,7 +54,7 @@ Ver `.env.example`. Son las mismas claves de Firebase que usa `backend-api`.
 
 ```bash
 docker build -t backend-realtime .
-docker run --env-file .env -p 4000:4000 backend-realtime
+docker run --env-file .env -p 3001:3001 backend-realtime
 ```
 
 ## Ramas
